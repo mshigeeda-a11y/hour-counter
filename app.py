@@ -128,20 +128,26 @@ if uploaded_files:
                 if start_dt <= current_dt <= end_dt:
                     col_cells_clean = col_cells.dropna()
                     col_cells_str = col_cells_clean.astype(str)
-                    valid_cells = col_cells_str[col_cells_str.str.contains('出席|欠席|遅刻|:', na=False)]
+                    
+                    # コロン、または特定のキーワードが入っている行を対象にする
+                    valid_cells = col_cells_str[col_cells_str.str.contains(':|：|出席|欠席|遅刻', na=False)]
                     
                     if len(valid_cells) > 0:
                         # この列（同一時間）から検出されたすべての教科を一時的に保存するセット
                         detected_subjects_in_col = set()
                         
                         for cell_val in valid_cells:
-                            # 【重要修正】1つのセル内に複数の「教科:状態」が入っているケースに対応
-                            # 例: 「国B:出席 | 世界史:出席」から、全ての教科名を正規表現で探し出す
-                            matches = re.findall(r'([^:\s|]+)\s*:\s*(?:出席|欠席|遅刻)', cell_val)
-                            for subj_name in matches:
-                                detected_subjects_in_col.add(subj_name.strip())
+                            # 【最強修正】半角・全角のコロンで区切られたパーツをすべてバラバラにする
+                            # 例: "国B:出席｜日本史:出席" -> ["国B", "出席｜日本史", "出席"] に近い形に分解
+                            # その中から「出席・欠席・遅刻」などの文言を除外した純粋な教科名だけを救出します
+                            parts = re.split(r'[:：|｜\s]+', cell_val)
+                            for p in parts:
+                                p_clean = p.strip()
+                                # 空っぽ、または出席状態を表す文字、または単なる記号は教科名ではないので除外
+                                if p_clean and not re.match(r'^(出席|欠席|遅刻|公欠|忌引|見学|am|pm|NaN|nan)$', p_clean):
+                                    detected_subjects_in_col.add(p_clean)
                         
-                        # もし「教科:状態」のパターンが一つも見つからなかった場合（HRや行事など）
+                        # もし「教科」が一つも見つからなかった場合（HRや行事など）
                         if len(detected_subjects_in_col) == 0:
                             if period_str in ["HR", "思索"]:
                                 detected_subjects_in_col.add(period_str)
