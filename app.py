@@ -52,7 +52,6 @@ if uploaded_files:
         all_dates_dict = {} 
         
         # クラスごとのデータを溜める辞書
-        # フォーマット: { "高2A": [ファイル1の列データ, ファイル2の列データ, ...], "高2B": [...] }
         class_columns_dict = {}
 
         # --- 1. アップロードされた全ファイルを解析し、クラスごとに列データを「結合」する ---
@@ -125,30 +124,35 @@ if uploaded_files:
                 if current_dt is None or pd.isna(col_info["period"]) or period_str == "SHR":
                     continue
                     
-                # 4月、5月、6月すべての列がここで正しく日付判定される
+                # 指定された期間内かチェック
                 if start_dt <= current_dt <= end_dt:
                     col_cells_clean = col_cells.dropna()
                     col_cells_str = col_cells_clean.astype(str)
                     valid_cells = col_cells_str[col_cells_str.str.contains('出席|欠席|遅刻|:', na=False)]
                     
                     if len(valid_cells) > 0:
-                        detected_subject = None
+                        # 【修正箇所】この列から検出されたすべての教科を一時的に保存するセット（重複防止）
+                        detected_subjects_in_col = set()
+                        
                         for cell_val in valid_cells:
                             if ":" in str(cell_val):
-                                detected_subject = str(cell_val).split(":")[0].strip()
-                                break
+                                subj_name = str(cell_val).split(":")[0].strip()
+                                detected_subjects_in_col.add(subj_name)
                         
-                        if not detected_subject:
+                        # もし「:」付きの教科名が一つも見つからなかった場合（HRや行事など）
+                        if len(detected_subjects_in_col) == 0:
                             if period_str in ["HR", "思索"]:
-                                detected_subject = period_str
+                                detected_subjects_in_col.add(period_str)
                             else:
-                                detected_subject = f"{period_str}限"
+                                detected_subjects_in_col.add(f"{period_str}限")
                         
-                        subject_counts[detected_subject] = subject_counts.get(detected_subject, 0) + 1
-                        
-                        if detected_subject not in subject_dates:
-                            subject_dates[detected_subject] = set()
-                        subject_dates[detected_subject].add(date_display_str)
+                        # 検出されたすべての教科に対してカウントと日付を記録する
+                        for detected_subject in detected_subjects_in_col:
+                            subject_counts[detected_subject] = subject_counts.get(detected_subject, 0) + 1
+                            
+                            if detected_subject not in subject_dates:
+                                subject_dates[detected_subject] = set()
+                            subject_dates[detected_subject].add(date_display_str)
             
             # --- 4. 結果の表示 ---
             st.header(f"📊 【{selected_class}】 総合集計結果 ({start_date_str} 〜 {end_date_str})")
