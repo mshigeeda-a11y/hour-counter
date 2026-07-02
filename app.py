@@ -131,15 +131,17 @@ if uploaded_files:
                     valid_cells = col_cells_str[col_cells_str.str.contains('出席|欠席|遅刻|:', na=False)]
                     
                     if len(valid_cells) > 0:
-                        # 【修正箇所】この列から検出されたすべての教科を一時的に保存するセット（重複防止）
+                        # この列（同一時間）から検出されたすべての教科を一時的に保存するセット
                         detected_subjects_in_col = set()
                         
                         for cell_val in valid_cells:
-                            if ":" in str(cell_val):
-                                subj_name = str(cell_val).split(":")[0].strip()
-                                detected_subjects_in_col.add(subj_name)
+                            # 【重要修正】1つのセル内に複数の「教科:状態」が入っているケースに対応
+                            # 例: 「国B:出席 | 世界史:出席」から、全ての教科名を正規表現で探し出す
+                            matches = re.findall(r'([^:\s|]+)\s*:\s*(?:出席|欠席|遅刻)', cell_val)
+                            for subj_name in matches:
+                                detected_subjects_in_col.add(subj_name.strip())
                         
-                        # もし「:」付きの教科名が一つも見つからなかった場合（HRや行事など）
+                        # もし「教科:状態」のパターンが一つも見つからなかった場合（HRや行事など）
                         if len(detected_subjects_in_col) == 0:
                             if period_str in ["HR", "思索"]:
                                 detected_subjects_in_col.add(period_str)
