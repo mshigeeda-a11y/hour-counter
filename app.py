@@ -107,7 +107,7 @@ if uploaded_files:
         if start_dt > end_dt:
             st.error("エラー: 開始日は終了日より前の日付を選択してください。")
         else:
-            # --- 3. 選択されたクラスの合算データを集計 ---
+            # --- 3. 選択されたクラスの合算データを集計 (修正版) ---
             all_cols_for_class = class_columns_dict[selected_class]
             
             subject_counts = {}
@@ -120,7 +120,7 @@ if uploaded_files:
                 period_str = str(col_info["period"]).strip()
                 col_cells = col_info["cells"]
                 
-                # 日付がない、またはSHRの場合は除外
+                # 日付がない、または時限が未入力、またはSHRの場合は除外
                 if current_dt is None or pd.isna(col_info["period"]) or period_str == "SHR":
                     continue
                     
@@ -129,32 +129,43 @@ if uploaded_files:
                     col_cells_clean = col_cells.dropna()
                     col_cells_str = col_cells_clean.astype(str)
                     
-                    # コロン、または特定のキーワードが入っている行を対象にする
+                    # 【改善】「HR」または「思索」の場合：
+                    # 生徒の入力内容にかかわらず、枠が存在していれば確実に1コマとしてカウントする
+                    if period_str in ["HR", "思索"]:
+                        detected_subject = period_str
+                        subject_counts[detected_subject] = subject_counts.get(detected_subject, 0) + 1
+                        if detected_subject not in subject_dates:
+                            subject_dates[detected_subject] = set()
+                        subject_dates[detected_subject].add(date_display_str)
+                        continue  # HR/思索の処理はここで完了、次の列へ進む
+                    
+                    # 通常の授業時（1〜7限など）の判定
                     valid_cells = col_cells_str[col_cells_str.str.contains(':|：|出席|欠席|遅刻', na=False)]
                     
                     if len(valid_cells) > 0:
-                        # この列（同一時間）から検出されたすべての教科を一時的に保存するセット
                         detected_subjects_in_col = set()
                         
                         for cell_val in valid_cells:
-                            # 【最強修正】半角・全角のコロンで区切られたパーツをすべてバラバラにする
-                            # 例: "国B:出席｜日本史:出席" -> ["国B", "出席｜日本史", "出席"] に近い形に分解
-                            # その中から「出席・欠席・遅刻」などの文言を除外した純粋な教科名だけを救出します
+                            # 半角・全角のコロン等で区切られたパーツに分解
                             parts = re.split(r'[:：|｜\s]+', cell_val)
                             for p in parts:
                                 p_clean = p.strip()
-                                # 空っぽ、または出席状態を表す文字、または単なる記号は教科名ではないので除外
-                                if p_clean and not re.match(r'^(出席|欠席|遅刻|公欠|忌引|見学|am|pm|NaN|nan)$', p_clean):
+                                
+                                # 「出欠 1回目」や「出席」などのステータス文字、不要な空文字を除外して教科名だけを抽出
+                                if p_clean:
+                                    # 「出席」や「欠席」という言葉自体を含むパーツ（出欠表記）は教科名から除外
+                                    if re.search(r'(出席|欠席|遅刻|公欠|忌引|見学)', p_clean):
+                                        continue
+                                    if p_clean.lower() in ['nan', 'am', 'pm']:
+                                        continue
+                                    
                                     detected_subjects_in_col.add(p_clean)
                         
-                        # もし「教科」が一つも見つからなかった場合（HRや行事など）
+                        # もし「教科」が一つも見つからなかった通常の時限
                         if len(detected_subjects_in_col) == 0:
-                            if period_str in ["HR", "思索"]:
-                                detected_subjects_in_col.add(period_str)
-                            else:
-                                detected_subjects_in_col.add(f"{period_str}限")
+                            detected_subjects_in_col.add(f"{period_str}限")
                         
-                        # 検出されたすべての教科に対してカウントと日付を記録する
+                        # カウントと日付の記録
                         for detected_subject in detected_subjects_in_col:
                             subject_counts[detected_subject] = subject_counts.get(detected_subject, 0) + 1
                             
