@@ -107,7 +107,7 @@ if uploaded_files:
         if start_dt > end_dt:
             st.error("エラー: 開始日は終了日より前の日付を選択してください。")
         else:
-            # --- 3. 選択されたクラスの合算データを集計 (修正版) ---
+            # --- 3. 選択されたクラスの合算データを集計 (HR・思索対応版) ---
             all_cols_for_class = class_columns_dict[selected_class]
             
             subject_counts = {}
@@ -120,8 +120,8 @@ if uploaded_files:
                 period_str = str(col_info["period"]).strip()
                 col_cells = col_info["cells"]
                 
-                # 日付がない、または時限が未入力、またはSHRの場合は除外
-                if current_dt is None or pd.isna(col_info["period"]) or period_str == "SHR":
+                # 日付がない、または時限が未入力、または「SHR」「思索」の場合は除外
+                if current_dt is None or pd.isna(col_info["period"]) or period_str in ["SHR", "思索"]:
                     continue
                     
                 # 指定された期間内かチェック
@@ -129,20 +129,21 @@ if uploaded_files:
                     col_cells_clean = col_cells.dropna()
                     col_cells_str = col_cells_clean.astype(str)
                     
-                    # 【改善】「HR」または「思索」の場合：
-                    # 生徒の入力内容にかかわらず、枠が存在していれば確実に1コマとしてカウントする
-                    if period_str in ["HR", "思索"]:
-                        detected_subject = period_str
-                        subject_counts[detected_subject] = subject_counts.get(detected_subject, 0) + 1
-                        if detected_subject not in subject_dates:
-                            subject_dates[detected_subject] = set()
-                        subject_dates[detected_subject].add(date_display_str)
-                        continue  # HR/思索の処理はここで完了、次の列へ進む
-                    
-                    # 通常の授業時（1〜7限など）の判定
-                    valid_cells = col_cells_str[col_cells_str.str.contains(':|：|出席|欠席|遅刻', na=False)]
+                    # 出欠を表すいずれかのキーワードが入っている有効なセルを抽出
+                    valid_cells = col_cells_str[col_cells_str.str.contains(':|：|出席|欠席|遅刻|公欠|忌引|見学', na=False)]
                     
                     if len(valid_cells) > 0:
+                        # --- 【改善】「HR」の場合 ---
+                        # 誰かしら出席・欠席などの入力があれば、1コマとして確実にカウントして終了
+                        if period_str == "HR":
+                            detected_subject = "HR"
+                            subject_counts[detected_subject] = subject_counts.get(detected_subject, 0) + 1
+                            if detected_subject not in subject_dates:
+                                subject_dates[detected_subject] = set()
+                            subject_dates[detected_subject].add(date_display_str)
+                            continue  # HRの処理はここで完了、次の列へ進む
+                        
+                        # --- 通常の授業時（1〜7限など）の判定 ---
                         detected_subjects_in_col = set()
                         
                         for cell_val in valid_cells:
